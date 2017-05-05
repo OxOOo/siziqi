@@ -3,7 +3,7 @@
 #include "Strategy.h"
 #include "AIEngine.h"
 
-AIEngine AI(100, 100);
+AIEngine AI(13, 13);
 Point action(-1, -1);
 
 using namespace std;
