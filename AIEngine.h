@@ -30,7 +30,6 @@ private:
     struct Node
     {
         LL a, b;
-        bool is_leaf; // 是否叶子
         int winner; // 胜者
         int player; // 先手
         double UCB_x, UCB_factor;
@@ -41,7 +40,6 @@ private:
     int MAX_M, MAX_N;
     int** pool_lines;
     int* pool_points;
-    int *simulation_xs, *simulation_ys;
     int *simulation_x_list, *simulation_y_list, *simulation_top;
     AIEngine::Node* node_pool;
     int node_pool_cnt;
@@ -49,6 +47,7 @@ private:
 
     int M, N, reloads;
     int** board;
+    int* board_backup;
 
     bool isWin(int lastX, int lastY); // 检测该落子点是否胜利
     inline bool isOK(int x, int y); // 检测是否在期盼内

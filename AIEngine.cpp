@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -14,19 +15,17 @@ using namespace std;
 
 const int DX[] = {0, 1, 1, 1};
 const int DY[] = {1, 0, 1, -1};
-const int TIMES = 10000;
-const double EXPAND_P = 0.5;
-const double C = 1.5;
+const int TIMES = 40000;
+const double C = 0.5;
 
 AIEngine::AIEngine(int MAX_M, int MAX_N): MAX_M(MAX_M), MAX_N(MAX_N)
 {
     pool_lines = new int*[MAX_M];
     pool_points = new int[MAX_M*MAX_N];
-    simulation_xs = new int[MAX_M*MAX_N];
-    simulation_ys = new int[MAX_M*MAX_N];
     simulation_x_list = new int[MAX_N];
     simulation_y_list = new int[MAX_N];
     simulation_top = new int[MAX_N];
+    board_backup = new int[MAX_M*MAX_N];
     reloads = 0;
 
     node_pool = new Node[TIMES*MAX_N];
@@ -41,11 +40,10 @@ AIEngine::~AIEngine()
 {
     delete[] pool_lines;
     delete[] pool_points;
-    delete[] simulation_xs;
-    delete[] simulation_ys;
     delete[] simulation_x_list;
     delete[] simulation_y_list;
     delete[] simulation_top;
+    delete[] board_backup;
     delete[] node_pool;
 }
 
@@ -114,6 +112,7 @@ Point AIEngine::MCST()
 {
     Node* root = newNode(BOARD_MINE);
 
+    *debug << M << " " << N << endl;
     for(int x = 0; x < M; x ++)
     {
         for(int y = 0; y < N; y ++)
@@ -121,80 +120,102 @@ Point AIEngine::MCST()
         *debug << endl;
     }
 
+    memcpy(board_backup, pool_points, sizeof(int)*N*M);
     for(int t = 0; t < TIMES; t ++)
     {
-        // *debug << "==============" << endl;
-        // for(int x = 0; x < M; x ++)
-        // {
-        //     for(int y = 0; y < N; y ++)
-        //         *debug << board[x][y] << " ";
-        //     *debug << endl;
-        // }
-
+        memcpy(pool_points, board_backup, sizeof(int)*N*M);
         Node* pos = root;
         vector<Node*> way;
-        vector<int> way_cy;
-        way.push_back(root);
 
-        double slogN = sqrt(log(root->b));
-
-        while(!pos->is_leaf)
-        {
-            double p = -1e16;
-            Node* next = NULL;
-            int cy = 0;
-
-            for(int y = 0; y < N; y ++)
-                if (pos->nodes[y] != NULL && p < pos->nodes[y]->UCB_x + pos->nodes[y]->UCB_factor*slogN)
-                {
-                    p = pos->nodes[y]->UCB_x + pos->nodes[y]->UCB_factor*slogN;
-                    cy = y;
-                    next = pos->nodes[y];
-                }
-            board[pos->xs[cy]][cy] = pos->player;
-            way_cy.push_back(cy);
-            way.push_back(next);
-            pos = next;
-        }
-
-        bool can_expand = false;
-        for(int y = 0; y < N; y ++)
-            can_expand |= isOK(pos->xs[y], y);
-        can_expand &= pos->winner == BOARD_NONE;
+        double slogN = root->b <= 1 ? 0 : C*sqrt(log(root->b));
         LL this_a = 0, this_b = 0;
-        if (can_expand && (rand()%100 < EXPAND_P*100 || pos == root)) // 扩展
+
+        while(true)
         {
-            pos->is_leaf = false;
+            way.push_back(pos);
+
+            if (pos->winner != BOARD_NONE)
+            {
+                this_b = 2;
+                this_a = LL(pos->winner == BOARD_MINE)*2;
+                break;
+            }
+
+            bool flag = 0;
+            for(int y = 0; y < N; y ++)
+                if(pos->nodes[y] != NULL && pos->nodes[y]->winner == pos->player)
+                {
+                    this_a = 2*LL(pos->player == BOARD_MINE);
+                    this_b = 2;
+                    pos->nodes[y]->a += this_a;
+                    pos->nodes[y]->b += this_b;
+                    recalcUCB(pos->nodes[y]);
+                    flag = 1;
+                    break;
+                }
+            if (flag) {
+                for(int y = 0; y < N; y ++)
+                    if(pos->nodes[y] != NULL && pos->nodes[y]->winner != pos->player)
+                    {
+                        pos->nodes[y]->a = 0;
+                        pos->nodes[y]->b = 1;
+                        recalcUCB(pos->nodes[y]);
+                    }
+                break;
+            }
+
+            int list_cnt = 0;
             for(int y = 0; y < N; y ++)
             {
                 int x = pos->xs[y];
-                if (isOK(x, y))
+                if (isOK(x, y) && pos->nodes[y] == NULL)
                 {
-                    board[x][y] = pos->player;
-                    pos->nodes[y] = newNode(BOARD_MINE + BOARD_ENEMY - pos->player);
-                    pos->nodes[y]->b = 2;
-                    if (isWin(x, y)) {
-                        pos->nodes[y]->winner = pos->player;
-                        pos->nodes[y]->a = 2*int(pos->player == BOARD_MINE);
-                    } else {
-                        pos->nodes[y]->a = simulation(pos->nodes[y]->player);
-                    }
-                    recalcUCB(pos->nodes[y]);
-                    this_b += pos->nodes[y]->b;
-                    this_a += pos->nodes[y]->a;
-                    board[x][y] = BOARD_NONE;
+                    simulation_x_list[list_cnt] = x;
+                    simulation_y_list[list_cnt] = y;
+                    list_cnt ++;
                 }
             }
-        } else if (pos->winner != BOARD_NONE) { // 终态
-            this_b = 2;
-            this_a = LL(pos->winner == BOARD_MINE)*2;
-        } else {
-            this_b = 2;
-            this_a = simulation(pos->player);
+
+            if (list_cnt) // 可被扩展
+            {
+                int r = rand() % list_cnt;
+                int x = simulation_x_list[r], y = simulation_y_list[r];
+                board[x][y] = pos->player;
+                pos->nodes[y] = newNode(BOARD_MINE + BOARD_ENEMY - pos->player);
+                pos->nodes[y]->b = 2;
+                if (isWin(x, y)) {
+                    pos->nodes[y]->a = 2*LL(BOARD_MINE == pos->player);
+                    pos->nodes[y]->winner = pos->player;
+                } else {
+                    pos->nodes[y]->a = simulation(BOARD_MINE + BOARD_ENEMY - pos->player);
+                }
+                recalcUCB(pos->nodes[y]);
+                this_b = pos->nodes[y]->b;
+                this_a = pos->nodes[y]->a;
+                break;
+            } else { // 不可被扩展
+                double p = -1e16;
+                Node* next = NULL;
+                int cy = 0;
+
+                for(int y = 0; y < N; y ++)
+                    if (pos->nodes[y] != NULL && p < pos->nodes[y]->UCB_x + pos->nodes[y]->UCB_factor*slogN)
+                    {
+                        p = pos->nodes[y]->UCB_x + pos->nodes[y]->UCB_factor*slogN;
+                        cy = y;
+                        next = pos->nodes[y];
+                    }
+                if (next == NULL) {
+                    this_a = 1;
+                    this_b = 2;
+                    break;
+                } else {
+                    board[pos->xs[cy]][cy] = pos->player;
+                    pos = next;
+                }
+            }
         }
 
-        for(int i = 0; i < (int)way_cy.size(); i ++)
-            board[way[i]->xs[way_cy[i]]][way_cy[i]] = BOARD_NONE;
         for(int i = 0; i < (int)way.size(); i ++)
         {
             way[i]->a += this_a;
@@ -208,10 +229,28 @@ Point AIEngine::MCST()
     for(int y = 0; y < N; y ++)
     {
         int x = root->xs[y];
-        if (isOK(x, y) && p < root->nodes[y]->UCB_x)
+        if (root->nodes[y] != NULL && p < root->nodes[y]->UCB_x)
         {
             p = root->nodes[y]->UCB_x;
             action = Point(x, y);
+        }
+    }
+
+    *debug << "==================" << endl;
+    for(int y = 0; y < N; y ++)
+    {
+        int x = root->xs[y];
+        if(isOK(x, y) && root->nodes[y] != NULL)
+        {
+            int flag_x = -1, flag_y = -1;
+            Node* node = root->nodes[y];
+            for(int yy = 0; yy < N; yy ++)
+                if(node->nodes[yy] != NULL && node->nodes[yy]->winner == node->player)
+                {
+                    flag_x = node->xs[yy];
+                    flag_y = yy;
+                }
+            *debug << x << " " << y << " " << node->winner << " " << flag_x << " " << flag_y << endl;
         }
     }
 
@@ -219,7 +258,7 @@ Point AIEngine::MCST()
     for(int y = 0; y < N; y ++)
     {
         int x = root->xs[y];
-        if (isOK(x, y))
+        if (isOK(x, y) && root->nodes[y] != NULL)
         {
             *debug << x << " " << y << " " << root->nodes[y]->a << " " << root->nodes[y]->b << endl;
         }
@@ -233,7 +272,6 @@ AIEngine::Node* AIEngine::newNode(int player)
 {
     Node *node = &node_pool[node_pool_cnt++];
     node->a = node->b = 0;
-    node->is_leaf = true;
     node->winner = BOARD_NONE;
     node->player = player;
     node->UCB_x = node->UCB_factor = 0.0;
@@ -253,17 +291,16 @@ void AIEngine::recalcUCB(AIEngine::Node *node)
 {
     if (node->player != BOARD_MINE) {
         node->UCB_x = double(node->a) / double(node->b);
-        node->UCB_factor = C*sqrt(1.0/node->b);
+        node->UCB_factor = sqrt(1.0/node->b);
     } else {
         node->UCB_x = double(node->b - node->a) / double(node->b);
-        node->UCB_factor = C*sqrt(1.0/node->b);
+        node->UCB_factor = sqrt(1.0/node->b);
     }
 }
 
 int AIEngine::simulation(int player)
 {
     int rst = 1;
-    int cnt = 0;
 
     for(int y = 0; y < N; y ++)
     {
@@ -291,10 +328,7 @@ int AIEngine::simulation(int player)
             for(int i = 0; i < list_cnt && x == -1; i ++)
             {
                 board[simulation_x_list[i]][simulation_y_list[i]] = player;
-                if (isWin(simulation_x_list[i], simulation_y_list[i])) {
-                    x = simulation_x_list[i];
-                    y = simulation_y_list[i];
-                }
+                if (isWin(simulation_x_list[i], simulation_y_list[i])) return 2*LL(player == BOARD_MINE);
                 board[simulation_x_list[i]][simulation_y_list[i]] = BOARD_NONE;
             }
             for(int i = 0; i < list_cnt && x == -1; i ++)
@@ -312,9 +346,6 @@ int AIEngine::simulation(int player)
                 y = simulation_y_list[r];
             }
 
-            simulation_xs[cnt] = x;
-            simulation_ys[cnt] = y;
-            cnt ++;
             board[x][y] = player;
             if (isWin(x, y)) {
                 rst = 2*int(player == BOARD_MINE);
@@ -328,9 +359,6 @@ int AIEngine::simulation(int player)
             break;
         }
     }
-
-    for(int i = 0; i < cnt; i ++)
-        board[simulation_xs[i]][simulation_ys[i]] = BOARD_NONE;
 
     return rst;
 }
