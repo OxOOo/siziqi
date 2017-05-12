@@ -10,13 +10,14 @@
 #include <fstream>
 #include <sstream>
 #include <queue>
+#include <sys/time.h>
 
 using namespace std;
 
 const int DX[] = {0, 1, 1, 1};
 const int DY[] = {1, 0, 1, -1};
-const int TIMES = 40000;
-const double C = 0.5;
+const int MAX_TIMES = 500000;
+const double C = 0.7;
 
 AIEngine::AIEngine(int MAX_M, int MAX_N): MAX_M(MAX_M), MAX_N(MAX_N)
 {
@@ -28,8 +29,8 @@ AIEngine::AIEngine(int MAX_M, int MAX_N): MAX_M(MAX_M), MAX_N(MAX_N)
     board_backup = new int[MAX_M*MAX_N];
     reloads = 0;
 
-    node_pool = new Node[TIMES*MAX_N];
-    for(int i = 0; i < TIMES*MAX_N; i ++)
+    node_pool = new Node[MAX_TIMES];
+    for(int i = 0; i < MAX_TIMES; i ++)
     {
         node_pool[i].xs.resize(MAX_N);
         node_pool[i].nodes.resize(MAX_N);
@@ -86,7 +87,7 @@ void AIEngine::reload(const int M, const int N,  const int* _board, const int no
 
     if (reloads == 0)
     {
-        system("del debug*.txt");
+        // system("del debug*.txt");
     }
 
     reloads ++;
@@ -95,10 +96,10 @@ void AIEngine::reload(const int M, const int N,  const int* _board, const int no
 
 Point AIEngine::getAction()
 {
-    char buf[1024];
-    sprintf(buf, "debug%d.txt", reloads);
-    debug = new ofstream(buf);
-    // debug = new ostringstream();
+    // char buf[1024];
+    // sprintf(buf, "debug%d.txt", reloads);
+    // debug = new ofstream(buf);
+    debug = new ostringstream();
 
     Point rst = MCST();
     
@@ -106,6 +107,13 @@ Point AIEngine::getAction()
     delete debug;
 
     return rst;
+}
+
+double getTime()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
 Point AIEngine::MCST()
@@ -121,8 +129,12 @@ Point AIEngine::MCST()
     }
 
     memcpy(board_backup, pool_points, sizeof(int)*N*M);
-    for(int t = 0; t < TIMES; t ++)
+    int times = 0;
+    double s_time = getTime();
+    for(; times < MAX_TIMES; times ++)
     {
+        if (getTime() - s_time > 2.5) break;
+
         memcpy(pool_points, board_backup, sizeof(int)*N*M);
         Node* pos = root;
         vector<Node*> way;
@@ -168,7 +180,7 @@ Point AIEngine::MCST()
             for(int y = 0; y < N; y ++)
             {
                 int x = pos->xs[y];
-                if (isOK(x, y) && pos->nodes[y] == NULL)
+                if (x >= 0 && pos->nodes[y] == NULL)
                 {
                     simulation_x_list[list_cnt] = x;
                     simulation_y_list[list_cnt] = y;
@@ -240,7 +252,7 @@ Point AIEngine::MCST()
     for(int y = 0; y < N; y ++)
     {
         int x = root->xs[y];
-        if(isOK(x, y) && root->nodes[y] != NULL)
+        if(x >= 0 && root->nodes[y] != NULL)
         {
             int flag_x = -1, flag_y = -1;
             Node* node = root->nodes[y];
@@ -258,12 +270,14 @@ Point AIEngine::MCST()
     for(int y = 0; y < N; y ++)
     {
         int x = root->xs[y];
-        if (isOK(x, y) && root->nodes[y] != NULL)
+        if (x >= 0 && root->nodes[y] != NULL)
         {
             *debug << x << " " << y << " " << root->nodes[y]->a << " " << root->nodes[y]->b << endl;
         }
     }
     *debug << action.x << " " << action.y << endl;
+    *debug << node_pool_cnt << endl;
+    *debug << "times : " << times << endl;
 
     return action;
 }
@@ -279,7 +293,7 @@ AIEngine::Node* AIEngine::newNode(int player)
     for(int y = 0; y < N; y ++)
     {
         int x = M - 1;
-        while(isOK(x, y) && board[x][y] != BOARD_NONE) x --;
+        while(x >= 0 && board[x][y] != BOARD_NONE) x --;
         node->xs[y] = x;
         node->nodes[y] = NULL;
     }
@@ -305,7 +319,7 @@ int AIEngine::simulation(int player)
     for(int y = 0; y < N; y ++)
     {
         int x = M - 1;
-        while(isOK(x, y) && board[x][y] != BOARD_NONE) x --;
+        while(x >= 0 && board[x][y] != BOARD_NONE) x --;
         simulation_top[y] = x;
     }
 
@@ -315,7 +329,7 @@ int AIEngine::simulation(int player)
         for(int y = 0; y < N; y ++)
         {
             int x = simulation_top[y];
-            if (isOK(x, y))
+            if (x >= 0)
             {
                 simulation_x_list[list_cnt] = x;
                 simulation_y_list[list_cnt] = y;
@@ -352,7 +366,7 @@ int AIEngine::simulation(int player)
                 break;
             }
             player = BOARD_MINE + BOARD_ENEMY - player;
-            while(isOK(x, y) && board[x][y] != BOARD_NONE) x --;
+            while(x >= 0 && board[x][y] != BOARD_NONE) x --;
             simulation_top[y] = x;
         } else {
             rst = 1;

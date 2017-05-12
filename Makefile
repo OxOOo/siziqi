@@ -1,5 +1,5 @@
 
-CXX_FLAGS = -Wall -g
+CXX_FLAGS = -Wall -g -O2
 SOURCES = $(wildcard *.cpp)
 OBJS = $(addprefix build/,$(SOURCES:.cpp=.o))
 
