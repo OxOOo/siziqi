@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Title</title>
+<link rel="stylesheet" href="https://stackedit.io/res-min/themes/base.css" />
+<script type="text/javascript" src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS_HTML"></script>
+</head>
+<body><div class="container"><h1 id="四子棋实验报告">四子棋实验报告</h1>
+
+<p>计54 陈宇 2015011343</p>
+
+<ol>
+<li><a href="#des">实验描述</a></li>
+<li><a href="#mcst">蒙特卡洛搜索树(MCST)</a> <br>
+<ol><li><a href="#why">为什么选MCST</a></li>
+<li><a href="#how-work">MCST是怎样工作的</a></li>
+<li><a href="#changes">对于MCST算法的一些修改</a> <br>
+<ol><li><a href="#sim">优化模拟</a></li>
+<li><a href="#ucb">“信心上界”参数选取</a></li>
+<li><a href="#faster">常数优化</a></li></ol></li></ol></li>
+<li><a href="#code">代码使用说明</a></li>
+<li><a href="#rst">与现有AI的测试结果</a></li>
+</ol>
+
+
+
+<h2 id="实验描述"><div id="des">实验描述</div></h2>
+
+<p>针对重力四子棋游戏，设计一个AI算法，打败尽量多的已有AI。</p>
+
+
+
+<h2 id="蒙特卡洛搜索树mcst"><div id="mcst">蒙特卡洛搜索树(MCST)</div></h2>
+
+
+
+<h3 id="为什么选mcst"><div id="why">为什么选MCST</div></h3>
+
+<p>考虑到目标是设计一个AI算法，所以最优的可选方案是MCST和ab剪枝；但是考虑到本四子棋的特殊性（棋盘上并不是所有空白点都可落子，并且还有障碍点），所以人工设置一个估价函数是比较困难的；相反，如果选用MCST，则<strong>可以免去设置估价函数的尴尬</strong>，故最会选中的方案是MCST。</p>
+
+
+
+<h3 id="mcst是怎样工作的"><div id="how-work">MCST是怎样工作的</div></h3>
+
+<p>在MCST算法中，存在一颗由不同局面组成的一颗“树”，这颗“树”的根节点就是当前局面，其子节点就是当前局面在某一处落子之后的局面，也是对手的局面，其他节点依次类推；对于每个节点，记录了该节点及其子节点一共被模拟了多少次，其中获胜多少次。</p>
+
+<p>MCST的算法流程：</p>
+
+<ol>
+<li>当前节点为根节点</li>
+<li>如果当前节点可以扩展，则随机选择一个可扩展的局面，对该局面进行模拟，跳到5</li>
+<li>如果当前节点有子节点，则根据“信心上界”选择最优的一个节点作为当前节点，跳到2</li>
+<li>选择当前节点进行模拟</li>
+<li>根据模拟的结果，更新当前节点到根路径上所有节点的信息</li>
+<li>完成</li>
+</ol>
+
+<p>当上面算法运行了足够多的次数，即可以选择根节点的所有子节点中期望胜率最大的一个节点作为最优操作。</p>
+
+
+
+<h3 id="对于mcst算法的一些修改"><div id="changes">对于MCST算法的一些修改</div></h3>
+
+
+
+<h4 id="优化模拟"><div id="sim">优化模拟</div></h4>
+
+<p>在传统的MCST算法中，模拟这部分是采用的纯随机的方式，这种方式的好处是简单，方便代码实现，速度快；但是缺点就是纯随机不太能够代表人的操作；为此，在尽量减少对速度的影响下，我添加了<strong>必胜特判</strong>和<strong>必败特判</strong>，即：如果当前某一步操作能够导致自己直接获胜，则一定下这个位置，否则，如果有某个位置不下会导致对方下一步获胜，则我方先一步下这个位置，如果以上两种情况都没有出现，则随机落子。</p>
+
+
+
+<h4 id="信心上界参数选取"><div id="ucb">“信心上界”参数选取</div></h4>
+
+<p>信心上界公式：</p>
+
+
+
+<p><script type="math/tex; mode=display" id="MathJax-Element-27">UCB = \frac{win_i}{total_i} + C*\sqrt{\frac{2*ln(total)}{total_i}}</script></p>
+
+<p>由于第二项有参数<script type="math/tex" id="MathJax-Element-28">C</script>，所以考虑可以将根号中的数字<script type="math/tex" id="MathJax-Element-29">2</script>移除，使得公式变成了这样：</p>
+
+
+
+<p><script type="math/tex; mode=display" id="MathJax-Element-30">UCB = \frac{win_i}{total_i} + C*\sqrt{\frac{ln(total)}{total_i}}</script></p>
+
+<p>在实际测试中，选用<script type="math/tex" id="MathJax-Element-31">C=0.7</script>是最优方案。</p>
+
+
+
+<h4 id="常数优化"><div id="faster">常数优化</div></h4>
+
+<ol>
+<li><p>胜利判定</p>
+
+<p>只判定最后一个落子有没有构成4连</p></li>
+<li><p>内存分配</p>
+
+<p>考虑到每次运行所用内存的最大值是可以预估的，所以采用内存池的方式进行优化；并且，将申请的内存放在全局变量中，这样只需要在整个程序结束的时候进行释放即可，节省了每次决策申请和释放内存的时间。</p></li>
+<li><p>“信心上界”计算</p>
+
+<p>对于浮点数，每次计算其除法、对数和根号均非常费时；仔细分析“信心上界”的公式，发现我们可以将其分成两部分，一部分只和节点自身的信息有关，另一部分只和全局有关，拆分如下：</p>
+
+<p><script type="math/tex; mode=display" id="MathJax-Element-32">A_i =\frac{win_i}{total_i} , B_i = \sqrt{\frac{1.0}{total_i}}</script> <br>
+<script type="math/tex; mode=display" id="MathJax-Element-33">X = C*\sqrt{ln(total)}</script> <br>
+<script type="math/tex; mode=display" id="MathJax-Element-34">UCB = A_i + B_i * X</script></p>
+
+<p>其中 <script type="math/tex" id="MathJax-Element-35">A_i,B_i</script> 只和自身节点信息有关， <script type="math/tex" id="MathJax-Element-36">X</script> 只和全局有关，故每个节点使用记录 <script type="math/tex" id="MathJax-Element-37">A_i,B_i</script> 即可。</p></li>
+<li><p>局面储存</p>
+
+<p>前面已经说过，MCST中每个节点代表一个局面，但是如果每个节点都储存当前局面棋盘信息的话，会占用很大空间，而且相邻局面之间绝大部分是相同的；考虑到这颗MCST树其实从根到每个节点的路径都表示一种两人的对抗过程，所以每个节点的局面只用记录从父节点到当前节点多了哪个落子，然后就可以通过当前节点到根节点的路径以及根节点的局面合成出当前的局面。</p></li>
+<li><p>时间</p>
+
+<p>在每次决策过程中，不断执行蒙特卡洛树算法，直到运行时间达到了<script type="math/tex" id="MathJax-Element-38">2.5</script>秒，或者总次数超过了<script type="math/tex" id="MathJax-Element-39">5000000</script>次，则结束。</p></li>
+</ol>
+
+
+
+<h2 id="代码使用说明"><div id="code">代码使用说明</div></h2>
+
+<p>AI的全部核心代码均在<code>AIEngine.h</code>和<code>AIEngine.cpp</code>中，这两个文件实现了<code>AIEngine</code>类：</p>
+
+<p><code>AIEngine(int MAX_M, int MAX_N)</code> 构造函数，两个参数分别表示可能的最大行和最大列。</p>
+
+<p><code>void reload(const int M, const int N,  const int* _board, const int noX, const int noY)</code> 传入当前局面。</p>
+
+<p><code>Point getAction()</code> 获取决策，每次调用该函数必须首先调用<code>reload</code>函数传入局面。</p>
+
+
+
+<h2 id="与现有ai的测试结果"><div id="rst">与现有AI的测试结果</div></h2>
+
+<table><thead><tr><th>对战AI</th><th>平局数量</th><th>胜利数量</th><th>失败数量</th></tr></thead><tbody><tr><td>2.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>4.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>6.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>8.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>10.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>12.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>14.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>16.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>18.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>20.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>22.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>24.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>26.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>28.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>32.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>34.dll</td><td>0</td><td>7</td><td>1</td></tr><tr><td>36.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>38.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>40.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>42.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>44.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>46.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>48.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>50.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>52.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>54.dll</td><td>1</td><td>6</td><td>1</td></tr><tr><td>56.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>58.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>60.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>62.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>64.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>68.dll</td><td>0</td><td>7</td><td>1</td></tr><tr><td>70.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>72.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>74.dll</td><td>0</td><td>6</td><td>2</td></tr><tr><td>76.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>78.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>80.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>82.dll</td><td>0</td><td>6</td><td>2</td></tr><tr><td>84.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>86.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>88.dll</td><td>0</td><td>7</td><td>1</td></tr><tr><td>90.dll</td><td>0</td><td>7</td><td>1</td></tr><tr><td>92.dll</td><td>0</td><td>5</td><td>3</td></tr><tr><td>94.dll</td><td>0</td><td>8</td><td>0</td></tr><tr><td>96.dll</td><td>0</td><td>5</td><td>3</td></tr><tr><td>98.dll</td><td>0</td><td>7</td><td>1</td></tr><tr><td>100.dll</td><td>0</td><td>6</td><td>2</td></tr></tbody></table></div></body>
+</html>
